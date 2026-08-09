@@ -27,98 +27,119 @@ a:hover{color:#e0763f}
 
 <div style="font-family:Manrope,sans-serif;background:#f3ead9;color:#221f1a">
 
-<section style="position:relative;height:100vh;min-height:640px;overflow:hidden;background:#201d18">
-  <video id="hero-bg-video" ref="{{ videoRef }}" src="uploads/Software_developer_speaking_at_desk_202608081611.mp4" autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
+<section style="position:relative;height:100vh;height:100dvh;min-height:520px;overflow:hidden;background:#201d18">
+  <video id="hero-bg-video" src="uploads/Software_developer_speaking_at_desk_202608081611.mp4" autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 18%"></video>
   <script>
   (function(){
-    function hookVideo(){
+    // This page's own template framework periodically re-renders and swaps in
+    // a FRESH <video> node (dropping loop/muted attributes and any listeners
+    // we attached to the old node each time). A one-time init() isn't enough —
+    // this script re-instruments the video every time the framework replaces
+    // it, and controls play/pause via event delegation on document so clicks
+    // keep working even after the button node itself gets swapped.
+    // There is no separate mute control: sound simply follows play/pause —
+    // playing means sound on, paused means sound off.
+    var hookedVideos = new WeakSet();
+    var triedInitialAutoplay = false;
+    var io = null;
+    var observedSection = null;
+
+    function syncIcons(v){
+      var iconPlaying = document.getElementById('hero-icon-playing');
+      var iconPaused = document.getElementById('hero-icon-paused');
+      if (iconPlaying) iconPlaying.style.display = v.paused ? 'none' : 'flex';
+      if (iconPaused) iconPaused.style.display = v.paused ? 'block' : 'none';
+    }
+
+    function reconcile(){
       var v = document.getElementById('hero-bg-video');
-      if (!v) return;
+      if (!v || hookedVideos.has(v)) return;
+      hookedVideos.add(v);
       v.loop = true;
-      v.setAttribute('loop', '');
-      if (!v.dataset.hooked) {
-        v.dataset.hooked = "1";
-        // Belt-and-suspenders: some renders strip the loop/muted attributes,
-        // so force a restart whenever the clip ends.
-        v.addEventListener('ended', function(){
-          v.currentTime = 0;
-          v.play().catch(function(){});
-        });
-        // Browsers block autoplay-with-sound on first visit. Try unmuted
-        // first; if the browser rejects it, fall back to muted autoplay and
-        // unmute automatically the moment the visitor interacts with the
-        // page at all (click/tap/key) — so it's never "muted because we
-        // muted it", only muted until that first interaction.
+
+      v.addEventListener('play', function(){ syncIcons(v); });
+      v.addEventListener('pause', function(){ syncIcons(v); });
+      // Native loop already restarts the clip; this is just a safety net.
+      v.addEventListener('ended', function(){
+        v.currentTime = 0;
+        v.play().catch(function(){});
+      });
+
+      // Browsers block autoplay-with-sound on first visit. Try unmuted first;
+      // if rejected, fall back to muted autoplay and unmute automatically on
+      // the visitor's first interaction anywhere on the page. Only attempted
+      // once globally, not once per re-render.
+      if (!triedInitialAutoplay) {
+        triedInitialAutoplay = true;
         v.muted = false;
-        v.removeAttribute('muted');
-        var p = v.play();
-        if (p && p.catch) {
-          p.catch(function(){
+        var playAttempt = v.play();
+        if (playAttempt && playAttempt.catch) {
+          playAttempt.catch(function(){
             v.muted = true;
-            v.setAttribute('muted', '');
             v.play().catch(function(){});
-            var unmuteOnInteract = function(){
-              v.muted = false;
-              v.removeAttribute('muted');
-              v.play().catch(function(){});
-              document.removeEventListener('click', unmuteOnInteract);
-              document.removeEventListener('keydown', unmuteOnInteract);
-              document.removeEventListener('touchstart', unmuteOnInteract);
+            var unmuteOnFirstInteraction = function(){
+              var cur = document.getElementById('hero-bg-video');
+              if (cur) { cur.muted = false; cur.play().catch(function(){}); }
+              document.removeEventListener('click', unmuteOnFirstInteraction);
+              document.removeEventListener('keydown', unmuteOnFirstInteraction);
+              document.removeEventListener('touchstart', unmuteOnFirstInteraction);
             };
-            document.addEventListener('click', unmuteOnInteract, { once: true });
-            document.addEventListener('keydown', unmuteOnInteract, { once: true });
-            document.addEventListener('touchstart', unmuteOnInteract, { once: true });
+            document.addEventListener('click', unmuteOnFirstInteraction, { once: true });
+            document.addEventListener('keydown', unmuteOnFirstInteraction, { once: true });
+            document.addEventListener('touchstart', unmuteOnFirstInteraction, { once: true });
           });
         }
       } else {
         v.play().catch(function(){});
       }
+
       // Stop the clip once its section scrolls out of view (e.g. moving to
       // the next page section), resume if scrolled back into it.
-      if (!v.dataset.scrollHooked) {
-        v.dataset.scrollHooked = "1";
-        var section = v.closest('section') || v.parentElement;
-        if (section && 'IntersectionObserver' in window) {
-          var io = new IntersectionObserver(function(entries){
-            entries.forEach(function(entry){
-              if (entry.isIntersecting) {
-                v.play().catch(function(){});
-              } else {
-                v.pause();
-              }
-            });
-          }, { threshold: 0.15 });
-          io.observe(section);
-        }
+      var section = v.closest('section') || v.parentElement;
+      if (section && 'IntersectionObserver' in window && section !== observedSection) {
+        if (io) io.disconnect();
+        observedSection = section;
+        io = new IntersectionObserver(function(entries){
+          entries.forEach(function(entry){
+            var cur = document.getElementById('hero-bg-video');
+            if (!cur) return;
+            if (entry.isIntersecting) cur.play().catch(function(){});
+            else cur.pause();
+          });
+        }, { threshold: 0.15 });
+        io.observe(section);
       }
+
+      syncIcons(v);
     }
+
+    // Event delegation: works even after the framework swaps the button node.
+    document.addEventListener('click', function(e){
+      var btn = e.target.closest && e.target.closest('#hero-play-btn');
+      if (!btn) return;
+      var v = document.getElementById('hero-bg-video');
+      if (!v) return;
+      if (v.paused) v.play().catch(function(){});
+      else v.pause();
+    });
+
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', hookVideo);
+      document.addEventListener('DOMContentLoaded', reconcile);
     } else {
-      hookVideo();
+      reconcile();
     }
-    // Re-assert after the page's own render framework finishes mounting/re-rendering.
-    setTimeout(hookVideo, 0);
-    setTimeout(hookVideo, 500);
+    // Keep re-checking for framework re-renders that swap the video node.
+    new MutationObserver(reconcile).observe(document.body, { childList: true, subtree: true });
+    setInterval(reconcile, 1000);
   })();
   </script>
   <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,18,15,0.05) 0%,rgba(20,18,15,0.05) 45%,rgba(16,14,12,0.55) 78%,rgba(16,14,12,0.85) 100%)"></div>
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 82% 8%,rgba(193,85,43,0.22),transparent 55%)"></div>
 
   <div style="position:absolute;left:clamp(20px,4vw,48px);bottom:clamp(20px,4vw,32px);display:flex;gap:10px;z-index:3">
-    <button onClick="{{ togglePlay }}" style="width:clamp(40px,6vw,50px);height:clamp(40px,6vw,50px);border-radius:50%;border:1px solid rgba(243,234,217,0.35);background:rgba(20,18,15,0.4);cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(10px);transition:background 0.2s" style-hover="background:rgba(193,85,43,0.55)">
-      <sc-if value="{{ playing }}" hint-placeholder-val="{{ true }}">
-        <div style="display:flex;gap:4px"><div style="width:4px;height:14px;background:#f3ead9;border-radius:1px"></div><div style="width:4px;height:14px;background:#f3ead9;border-radius:1px"></div></div>
-      </sc-if>
-      <sc-if value="{{ notPlaying }}">
-        <div style="width:0;height:0;border-top:8px solid transparent;border-bottom:8px solid transparent;border-left:12px solid #f3ead9;margin-left:2px"></div>
-      </sc-if>
-    </button>
-    <button onClick="{{ toggleMute }}" style="width:clamp(40px,6vw,50px);height:clamp(40px,6vw,50px);border-radius:50%;border:1px solid rgba(243,234,217,0.35);background:rgba(20,18,15,0.4);cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(10px);position:relative;transition:background 0.2s" style-hover="background:rgba(193,85,43,0.55)">
-      <div style="width:15px;height:15px;background:#f3ead9;clip-path:polygon(0% 35%,38% 35%,72% 6%,72% 94%,38% 65%,0% 65%)"></div>
-      <sc-if value="{{ muted }}" hint-placeholder-val="{{ true }}">
-        <div style="position:absolute;width:20px;height:1.5px;background:#f3ead9;transform:rotate(45deg)"></div>
-      </sc-if>
+    <button id="hero-play-btn" type="button" aria-label="Play or pause video" style="width:clamp(40px,6vw,50px);height:clamp(40px,6vw,50px);border-radius:50%;border:1px solid rgba(243,234,217,0.35);background:rgba(20,18,15,0.4);cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(10px);transition:background 0.2s" style-hover="background:rgba(193,85,43,0.55)">
+      <span id="hero-icon-playing" style="display:flex;gap:4px"><div style="width:4px;height:14px;background:#f3ead9;border-radius:1px"></div><div style="width:4px;height:14px;background:#f3ead9;border-radius:1px"></div></span>
+      <span id="hero-icon-paused" style="display:none;width:0;height:0;border-top:8px solid transparent;border-bottom:8px solid transparent;border-left:12px solid #f3ead9;margin-left:2px"></span>
     </button>
   </div>
 
@@ -270,44 +291,5 @@ a:hover{color:#e0763f}
 </div>
 
 </x-dc>
-<script type="text/x-dc" data-dc-script>
-
-class Component extends DCLogic {
-  state = { playing: true, muted: true };
-  videoEl = null;
-
-  setVideoRef = (el) => {
-    this.videoEl = el;
-  };
-
-  togglePlay = () => {
-    if (!this.videoEl) return;
-    if (this.state.playing) {
-      this.videoEl.pause();
-    } else {
-      this.videoEl.play();
-    }
-    this.setState(s => ({ playing: !s.playing }));
-  };
-
-  toggleMute = () => {
-    if (!this.videoEl) return;
-    this.videoEl.muted = !this.state.muted;
-    this.setState(s => ({ muted: !s.muted }));
-  };
-
-  renderVals() {
-    return {
-      videoRef: this.setVideoRef,
-      togglePlay: this.togglePlay,
-      toggleMute: this.toggleMute,
-      playing: this.state.playing,
-      notPlaying: !this.state.playing,
-      muted: this.state.muted,
-    };
-  }
-}
-
-</script>
 </body>
 </html>
