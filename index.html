@@ -21,13 +21,62 @@ a:hover{color:#e0763f}
 @keyframes floatB{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-26px,16px) scale(1.1)}}
 @keyframes glowPulse{0%,100%{opacity:0.35}50%{opacity:0.7}}
 @keyframes driftGlow{0%,100%{transform:translate(-10%,-10%) scale(1)}50%{transform:translate(6%,8%) scale(1.2)}}
+@keyframes scrollBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(10px)}}
 </style>
 </helmet>
 
 <div style="font-family:Manrope,sans-serif;background:#f3ead9;color:#221f1a">
 
 <section style="position:relative;height:100vh;min-height:640px;overflow:hidden;background:#201d18">
-  <video ref="{{ videoRef }}" src="uploads/Software_developer_speaking_at_desk_202608081611.mp4" autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
+  <video id="hero-bg-video" ref="{{ videoRef }}" src="uploads/Software_developer_speaking_at_desk_202608081611.mp4" autoplay muted loop playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
+  <script>
+  (function(){
+    function hookVideo(){
+      var v = document.getElementById('hero-bg-video');
+      if (!v) return;
+      v.muted = true;
+      v.loop = true;
+      v.setAttribute('muted', '');
+      v.setAttribute('loop', '');
+      if (!v.dataset.hooked) {
+        v.dataset.hooked = "1";
+        // Belt-and-suspenders: some renders strip the loop/muted attributes,
+        // so force a restart whenever the clip ends.
+        v.addEventListener('ended', function(){
+          v.currentTime = 0;
+          v.play().catch(function(){});
+        });
+      }
+      v.play().catch(function(){});
+      // Stop the clip once its section scrolls out of view (e.g. moving to
+      // the next page section), resume if scrolled back into it.
+      if (!v.dataset.scrollHooked) {
+        v.dataset.scrollHooked = "1";
+        var section = v.closest('section') || v.parentElement;
+        if (section && 'IntersectionObserver' in window) {
+          var io = new IntersectionObserver(function(entries){
+            entries.forEach(function(entry){
+              if (entry.isIntersecting) {
+                v.play().catch(function(){});
+              } else {
+                v.pause();
+              }
+            });
+          }, { threshold: 0.15 });
+          io.observe(section);
+        }
+      }
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', hookVideo);
+    } else {
+      hookVideo();
+    }
+    // Re-assert after the page's own render framework finishes mounting/re-rendering.
+    setTimeout(hookVideo, 0);
+    setTimeout(hookVideo, 500);
+  })();
+  </script>
   <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,18,15,0.05) 0%,rgba(20,18,15,0.05) 45%,rgba(16,14,12,0.55) 78%,rgba(16,14,12,0.85) 100%)"></div>
   <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 82% 8%,rgba(193,85,43,0.22),transparent 55%)"></div>
 
@@ -71,9 +120,16 @@ a:hover{color:#e0763f}
       </div>
     </div>
   </div>
+
+  <a href="#about" aria-label="Scroll to about section" style="position:absolute;left:50%;bottom:clamp(16px,3vw,26px);transform:translateX(-50%);z-index:3;display:flex;flex-direction:column;align-items:center;gap:6px;color:#f3ead9;text-decoration:none;opacity:0.85">
+    <div style="font-size:10px;letter-spacing:0.14em;text-transform:uppercase;font-weight:600">Scroll</div>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="animation:scrollBounce 1.8s ease-in-out infinite">
+      <path d="M6 9l6 6 6-6" stroke="#f3ead9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </a>
 </section>
 
-<section style="background:#f3ead9;padding:120px 56px;display:grid;grid-template-columns:340px 1fr;gap:80px;max-width:1200px;margin:0 auto;align-items:start">
+<section id="about" style="background:#f3ead9;padding:120px 56px;display:grid;grid-template-columns:340px 1fr;gap:80px;max-width:1200px;margin:0 auto;align-items:start">
   <div style="width:100%;height:420px;border-radius:18px;background:#201d18;position:relative;overflow:hidden;padding:32px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between">
     <div style="position:absolute;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(193,85,43,0.55),transparent 70%);top:-40px;right:-60px;animation:driftGlow 9s ease-in-out infinite"></div>
     <div style="position:absolute;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(224,133,79,0.35),transparent 70%);bottom:-30px;left:-40px;animation:driftGlow 11s ease-in-out infinite reverse"></div>
