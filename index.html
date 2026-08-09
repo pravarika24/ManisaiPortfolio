@@ -34,9 +34,7 @@ a:hover{color:#e0763f}
     function hookVideo(){
       var v = document.getElementById('hero-bg-video');
       if (!v) return;
-      v.muted = true;
       v.loop = true;
-      v.setAttribute('muted', '');
       v.setAttribute('loop', '');
       if (!v.dataset.hooked) {
         v.dataset.hooked = "1";
@@ -46,8 +44,35 @@ a:hover{color:#e0763f}
           v.currentTime = 0;
           v.play().catch(function(){});
         });
+        // Browsers block autoplay-with-sound on first visit. Try unmuted
+        // first; if the browser rejects it, fall back to muted autoplay and
+        // unmute automatically the moment the visitor interacts with the
+        // page at all (click/tap/key) — so it's never "muted because we
+        // muted it", only muted until that first interaction.
+        v.muted = false;
+        v.removeAttribute('muted');
+        var p = v.play();
+        if (p && p.catch) {
+          p.catch(function(){
+            v.muted = true;
+            v.setAttribute('muted', '');
+            v.play().catch(function(){});
+            var unmuteOnInteract = function(){
+              v.muted = false;
+              v.removeAttribute('muted');
+              v.play().catch(function(){});
+              document.removeEventListener('click', unmuteOnInteract);
+              document.removeEventListener('keydown', unmuteOnInteract);
+              document.removeEventListener('touchstart', unmuteOnInteract);
+            };
+            document.addEventListener('click', unmuteOnInteract, { once: true });
+            document.addEventListener('keydown', unmuteOnInteract, { once: true });
+            document.addEventListener('touchstart', unmuteOnInteract, { once: true });
+          });
+        }
+      } else {
+        v.play().catch(function(){});
       }
-      v.play().catch(function(){});
       // Stop the clip once its section scrolls out of view (e.g. moving to
       // the next page section), resume if scrolled back into it.
       if (!v.dataset.scrollHooked) {
